@@ -2,10 +2,11 @@
 title: "Tarea 3"
 output: 
   flexdashboard::flex_dashboard:
+    theme: cerulea
     orientation: rows
 runtime: shiny
-    
 ---
+
 ```{r setup, include=FALSE}
 library(flexdashboard)
 ```
@@ -54,10 +55,10 @@ uso_urbano_rWGS <-
     "/vsicurl/https://dvictoria2020.github.io/Proyecto1-R/uso_urbano_rWGS.tif",
   )
 
-# Lista ordenada de distritos + "Todas"
+# Lista ordenada de distritos + "Todos"
 lista_distritos <- unique(Patente_final$Distrito)
 lista_distritos <- sort(lista_distritos)
-lista_distritos <- c("Todas", lista_distritos)
+lista_distritos <- c("Todos", lista_distritos)
 
 # Lista ordenada de actividad de patentes + "Todas"
 lista_patentes <- unique(Patente_final$Actividad)
@@ -69,79 +70,98 @@ Column {.sidebar}
 -----------------------------------------------------------------------
 
 
+
 ```{r filtros}
 # Selector de distrito
+ui <- dashboardPage(
+ dashboardHeader(title = "Patentes Santa Ana"),
+ dashboardSidebar(sidebarMenu(
+ menuItem(
+ text = "Filtros",
 selectInput(
-  inputId = "Distrito",
+  inputId = "distrito",
   label = "Distrito",
   choices = lista_distritos,
-  selected = "Todas"
-)
-
+  selected = "Todos"
+),
 # Selector de actividad comercial
 selectInput(
-  inputId = "Actividad",
+  inputId = "actividad",
   label = "Actividad comercial",
   choices = lista_patentes,
   selected = "Todas"
-)
+),
 # Selector de fecha de aprobación
 dateRangeInput(
   inputId = "fecha",
   label = "Fecha de aprobación",
-  start = "1970-01-01",
+  start = "1991-01-01",
   end   = Sys.Date(),
   separator = " a ",
   language = "es"
+),
+startExpanded = TRUE
+ )
+ )),
+ dashboardBody(fluidRow(
+ box(
+ title = "Mapa de ubicación de patentes comerciales",
+ leafletOutput(outputId = "mapa"),
+ width = 8
+ ),
+ box(
+ title = "Distribución...",
+ plotOutput(outputId = "grafico"),
+ width = 4
+ ),
+ fluidRow(
+ box(
+ title = "Registros de actividad",
+ DTOutput(outputId = "tabla"),
+ width = 12
+ ) 
+ ) 
+ ))
 )
-
 # Función para filtrar registros con base en los controles de entrada
-filtrarPatente <- reactive ({
-  # Remoción de geometrías y selección de columnas
+server <- function(input, output, session) {
+ filtrarRegistros <- reactive ({
   actividad_filtrada <-
     Patente_final %>%
-    dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona,Distrito)
+    dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona, Distrito)
+  
   
   # Filtrado de actividad por distrito
-  if (input$Distrito != "Todas") {
+  if (input$distrito != "Todas") {
     actividad_filtrada <-
       actividad_filtrada %>%
-      filter(Distrito == input$Distrito)
+      filter(distrito == input$distrito)
   } 
-  
-
   # Filtrado de actividad por fecha
   actividad_filtrada <-
     actividad_filtrada %>%
     filter(
-      Aprobacion >= as.Date(input$fecha[1], origin = "1970-01-01") &
-        Aprobacion <= as.Date(input$fecha[2], origin = "1970-01-01")
+      Aprobacion >= as.Date(input$fecha[1], origin = "1985-01-01") &
+        Aprobacion <= as.Date(input$fecha[2], origin = "1985-01-01")
     )
-  
-  
     # Filtrado de actividad por tipo de personería
-  if (input$Tipo_persona != "Todas") {
+  if (input$Persona != "Todas") {
     actividad_filtrada <-
       actividad_filtrada %>%
-      filter(Tipo_persona == input$Personeria)
+      filter(Tipo_persona == input$Persona)
   }
-  
   return (actividad_filtrada)
 })
-  
-  
 ```
 
-Row
+Row {data-height=550}
 -----------------------------------------------------------------------
 
 ### Muestra de distribución de patentes comerciales en Santa Ana
 
 ```{r mapa, warning=FALSE}
-renderLeaflet ({
-  patente <-
-    filtrarPatente()
-  
+ output$mapa <- renderLeaflet ({
+ registros <- filtrarRegistros()
   
 # Conversión del objeto uso a la clase RasterLayer
 uso_urbano_rWGS_rl <- raster::raster(uso_urbano_rWGS)
@@ -150,14 +170,12 @@ uso_urbano_rWGS_rl <- raster::raster(uso_urbano_rWGS)
 leaflet() %>%
   addTiles(options = providerTileOptions(noWrap = TRUE), group="Open Street Maps") %>%
   addProviderTiles("Esri.WorldImagery", group="Imagen Satelital")%>%
-  
   addRasterImage(
     uso_urbano_rWGS_rl,
     color= "#DDB892",
     opacity = 0.6,
     group = "Uso Urbano 2005"
-  )%>%
-  
+  ) %>%
   addPolygons(
     data = limite_distrital,
     color = "purple",
@@ -165,39 +183,56 @@ leaflet() %>%
     stroke = TRUE,
     weight = 2.0,
     group = "Limite distrital"
-  )%>% 
-  
+  ) %>% 
   addCircleMarkers(
-    data = patente,
-    stroke = F,
+    data = registros,
+    stroke = TRUE,
     radius = 4,
     fillColor = 'orange',
     fillOpacity = 1,
     label = paste0(
-      patente$Actividad,
+      registros$Actividad,
        ", ",
-      patente$Distrito,
+      registros$Distrito,
        ", ",
-      patente$Aprobacion
+      registros$Aprobacion,
     ),
+    popup = paste0(
+        "<strong>Distrito: </strong>",
+        "<em>",
+        registros$Distrito,
+        "</em>",
+        "<br>",
+        "<strong>Actividad Comercial: </strong>",
+        registros$Actividad,
+      ),
     clusterOptions = markerClusterOptions(),
     group = "Patentes comerciales"
-  )%>% 
-  
-  addMiniMap(
+    )
+
+    addMiniMap(
     tiles = providers$OpenStreetMap,
     toggleDisplay = TRUE
-  )%>%
+  ) %>%
  
- addLayersControl(
+   addLayersControl(
    baseGroups = c("Open Street Maps","Imagen Satelital"),
    overlayGroups = c("Uso Urbano 2005","Limite distrital", "Patentes comerciales"), 
    options = layersControlOptions(collapsed = FALSE)
   )
+    addSearchOSM() %>%
+    addResetMapButton() %>%
+    addMouseCoordinates()
+    addScaleBar("bottomright") %>%
+    addResetMapButton() %>%
+    addFullscreenControl() %>%
+    addControlGPS()
+    
 })
+
 ```
 
-Row
+Row {data-height=350}
 -----------------------------------------------------------------------
 
 
@@ -232,13 +267,13 @@ Row
 -----------------------------------------------------------------------
 
 ```{r tabla}
- Patente_final %>%
-  st_drop_geometry() %>%
-  select(N_patente, Aprobacion, Actividad, Nombre_comercio, Permiso_salud, Rotulo, N_finca, Tipo_persona, Direccion_, Distrito) %>%
-  datatable(Patente_final, options = list(
-    language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'),
-    pageLenth =5
-  ))
+  licenciascomerciales %>%
+  st_drop_geometry()
+  datatable()
+  })
+
+shinyApp(ui, server)
+  
 ```
 
 
