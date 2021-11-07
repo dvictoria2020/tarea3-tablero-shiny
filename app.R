@@ -28,6 +28,30 @@ limite_distrital <-
   limite_distrital %>%
   st_transform(4326)
 
+
+# Lectura de una capa vectorial (GeoJSON) patentes de Santa Ana
+patentesST <-
+  st_read(
+    "https://dvictoria2020.github.io/tarea3-tablero-shiny/patentesST.geojson",
+    quiet = TRUE
+  )
+# Transformación del CRS del objeto división distrital
+patentesST <-
+  patentesST %>%
+  st_transform(4326)
+
+
+# Lectura de una capa vectorial (GeoJSON) de división distrial de Santa Ana
+patentes <-
+  st_read(
+    "https://dvictoria2020.github.io/Proyecto1-R/limite_distrital.geojson",
+    quiet = TRUE
+  )
+# Transformación del CRS del objeto división distrital
+limite_distrital <-
+  limite_distrital %>%
+  st_transform(4326)
+
 # Lectura de archivo CSV de patentes comerciales en Santa Ana
 Patente_final <-
   st_read(
@@ -106,7 +130,7 @@ server <- function(input, output, session) {
  filtrarRegistros <- reactive({
   # Remoción de geometrías y selección de columnas
   patente_filtrada <-
-    patente_filtrada %>%
+    Patente_final %>%
     dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona, Distrito)
     
   # Filtrado de actividad por fecha de aprobación
@@ -120,7 +144,7 @@ server <- function(input, output, session) {
   # Filtrado de actividad 
   if (input$Actividad != "Todas") {
     patente_filtrada <-
-      patente_filtrada %>%
+      Patente_final %>%
       filter(Actividad == input$Actividad)
     }
     
