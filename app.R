@@ -1,10 +1,8 @@
 #Paquetes
 
 library(flexdashboard)
-defaultEncoding <- "UTF8"
 library(shiny)
 library(shinydashboard)
-library(shinyWidgets)
 library(dplyr)
 library(sf)
 library(terra)
@@ -108,7 +106,7 @@ server <- function(input, output, session) {
  filtrarRegistros <- reactive({
   # Remoción de geometrías y selección de columnas
   patente_filtrada <-
-    Patente_final %>%
+    patente_filtrada %>%
     dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona, Distrito)
     
   # Filtrado de actividad por fecha de aprobación
@@ -122,7 +120,7 @@ server <- function(input, output, session) {
   # Filtrado de actividad 
   if (input$Actividad != "Todas") {
     patente_filtrada <-
-      Patente_final %>%
+      patente_filtrada %>%
       filter(Actividad == input$Actividad)
     }
     
@@ -139,7 +137,7 @@ server <- function(input, output, session) {
 }
 
 ### Registros de presencia
-output$tabla <- renderDT({
+output$tabla <- renderDataTable({
   registros <- filtrarRegistros()
   
   registros %>%
