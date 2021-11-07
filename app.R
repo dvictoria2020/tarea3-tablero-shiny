@@ -1,8 +1,10 @@
-#Paquetes
+# carga de librerías
 
-library(flexdashboard)
 library(shiny)
 library(shinydashboard)
+library(shinyWidgets)
+library(htmlwidgets)
+library(shiny)
 library(dplyr)
 library(sf)
 library(terra)
@@ -31,26 +33,14 @@ limite_distrital <-
 
 # Lectura de una capa vectorial (GeoJSON) patentes de Santa Ana
 patentesST <-
-  st_read(
-    "https://dvictoria2020.github.io/tarea3-tablero-shiny/patentesST.geojson",
+  st_read("https://dvictoria2020.github.io/tarea3-tablero-shiny/patentesST.geojson",
     quiet = TRUE
   )
-# Transformación del CRS del objeto división distrital
+# Transformación del CRS del objeto patentes
 patentesST <-
   patentesST %>%
   st_transform(4326)
 
-
-# Lectura de una capa vectorial (GeoJSON) de división distrial de Santa Ana
-patentes <-
-  st_read(
-    "https://dvictoria2020.github.io/Proyecto1-R/limite_distrital.geojson",
-    quiet = TRUE
-  )
-# Transformación del CRS del objeto división distrital
-limite_distrital <-
-  limite_distrital %>%
-  st_transform(4326)
 
 # Lectura de archivo CSV de patentes comerciales en Santa Ana
 Patente_final <-
@@ -66,12 +56,12 @@ Patente_final <-
 st_crs(Patente_final) <- 4326
 
 # Lista ordenada de actividad + "Todas"
-lista_patentes <- unique(Patente_final$Actividad)
-lista_patentes <- sort(lista_patentes)
-lista_patentes <- c("Todas", lista_patentes)
+lista_actividad <- unique(patentesST$Actividad)
+lista_actividad <- sort(lista_actividad)
+lista_actividad <- c("Todas", lista_actividad)
 
 # Lista ordenada de distritos + "Todos"
-lista_distritos <- unique(Patente_final$Distrito)
+lista_distritos <- unique(patentesST$Distrito)
 lista_distritos <- sort(lista_distritos)
 lista_distritos <- c("Todos", lista_distritos)
 
@@ -85,7 +75,7 @@ ui <-
       selectInput(
         inputId = "Actividad",
         label = "Actividad Comercial",
-        choices = lista_patentes,
+        choices = lista_actividad,
         selected = "Todas"
       ),
       selectInput(
@@ -107,16 +97,17 @@ ui <-
   )),
   dashboardBody(fluidRow(
     box(
-      title = "Registros de patentes", 
-      DTOutput(outputId = "tabla"),
-      width = 6
-    ),
-    box(
       title = "Mapa distribución de patentes comerciales en Santa Ana",
       leafletOutput(outputId = "mapa"),
       width = 6
+    ),    
+    box(
+      title = "Registros de patentes", 
+      DTOutput(outputId = "tabla"),
+      width = 6
     )
   ),
+
   fluidRow(
     box(
       title = "Valoración de los recursos del patrimonio material",
@@ -124,13 +115,13 @@ ui <-
       width = 12
     )
   ))
-)
+  )
 server <- function(input, output, session) {
   
  filtrarRegistros <- reactive({
   # Remoción de geometrías y selección de columnas
   patente_filtrada <-
-    Patente_final %>%
+    patentesST %>%
     dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona, Distrito)
     
   # Filtrado de actividad por fecha de aprobación
@@ -138,30 +129,30 @@ server <- function(input, output, session) {
     patente_filtrada %>%
     filter(
       Aprobacion >= as.Date(input$fecha[1], origin = "1981-01-01") &
-        Aprobacion <= as.Date(input$fecha[2], origin = "1981-01-01")
+      Aprobacion <= as.Date(input$fecha[2], origin = "1981-01-01")
       )   
     
   # Filtrado de actividad 
   if (input$Actividad != "Todas") {
     patente_filtrada <-
-      Patente_final %>%
+    Patente_final %>%
       filter(Actividad == input$Actividad)
     }
     
     # Filtrado de actividad por distrito
     if (input$Distrito != "Todos") {
       patente_filtrada <-
-        patente_filtrada %>%
+      patente_filtrada %>%
         filter(Distrito == input$Distrito)
     }
   
     return(patente_filtrada)
     
   })
-}
+
 
 ### Registros de presencia
-output$tabla <- renderDataTable({
+output$tabla <- renderDT({
   registros <- filtrarRegistros()
   
   registros %>%
@@ -190,29 +181,27 @@ output$mapa <- renderLeaflet({
       weight = 2.0,
       group = "Limite distrital"
     ) %>% 
-      addCircleMarkers(
-        data = registros,
-        stroke = F,
-        radius = 4,
-        fillColor = 'orange',
-        fillOpacity = 1,
-        label = paste0(
-          registros$Actividad,
-          ",",
-          registros$Distrito,
-          ", ",
-          registros$Aprobacion
-        ),
-        popup = paste0(
-          "<strong>Distritos: </strong>",
-          "<em>",
-          registros$Distrito,
-          "</em>",
-          "<br>",
-          "<strong>Actividad Comercial: </strong>",
-          registros$Actividad
-          )
-      ) %>%
+    addCircleMarkers(
+      data = registros,
+      stroke = F,
+      radius = 4,
+      fillColor = 'orange',
+      fillOpacity = 1,
+      popup = paste0(
+        "<strong>Distrito: </strong>",
+        registros$Distrito,
+        "<br>",
+        "<strong>Actividad Comercial: </strong>",
+        registros$Actividad),
+      label = paste0(
+        registros$Actividad,
+        ",",
+        registros$Distrito,
+        ", ",
+        registros$Aprobacion
+      ),
+      
+    ) %>% 
       
       addMiniMap(
         tiles = providers$OpenStreetMap,
@@ -239,7 +228,7 @@ output$mapa <- renderLeaflet({
     
     # Convertimos a porcentaje
     
-    porcentaje <- Patente_final %>%
+    porcentaje <- patentesST %>%
       group_by(Distrito) %>%
       count() %>%
       ungroup() %>%
@@ -253,6 +242,8 @@ output$mapa <- renderLeaflet({
                  distrito en el cantón Santa Ana") +
       theme_void() + scale_fill_brewer(palette = "Dark2")
   })
+  
+}
 
 shinyApp(ui, server)
 

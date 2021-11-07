@@ -12,18 +12,17 @@ library(flexdashboard)
 
 
 ```{r paquetes, warning=FALSE, message=FALSE}
-library(flexdashboard)
-defaultEncoding <- "UTF8"
 library(dplyr)
 library(sf)
 library(terra)
 library(raster)
+library(rgdal)
 library(DT)
-library(ggplot2)
 library(plotly)
 library(leaflet)
-library(leaflet.extras)
 library(leafem)
+library(leaflet.extras)
+library(shiny)
 ```
 
 ```{r datos, warning=FALSE, message=FALSE}
@@ -38,6 +37,18 @@ limite_distrital <-
   limite_distrital %>%
   st_transform(4326)
 
+
+# Lectura de una capa vectorial (GeoJSON) patentes de Santa Ana
+patentesST <-
+  st_read("https://dvictoria2020.github.io/tarea3-tablero-shiny/patentesST.geojson",
+    quiet = TRUE
+  )
+# Transformación del CRS del objeto patentes
+patentesST <-
+  patentesST %>%
+  st_transform(4326)
+
+
 # Lectura de archivo CSV de patentes comerciales en Santa Ana
 Patente_final <-
   st_read(
@@ -48,6 +59,8 @@ Patente_final <-
     ),
     quiet = TRUE
   )
+
+
 # Asignación de un CRS al objeto patentes
 st_crs(Patente_final) <- 4326
 # Lectura de capa raster de uso urbano
@@ -55,12 +68,14 @@ uso_urbano_rWGS <-
   rast(
     "/vsicurl/https://dvictoria2020.github.io/Proyecto1-R/uso_urbano_rWGS.tif",
   )
+
 # Lista ordenada de actividad + "Todas"
-lista_patentes <- unique(Patente_final$Actividad)
-lista_patentes <- sort(lista_patentes)
-lista_patentes <- c("Todas", lista_patentes)
+lista_actividad <- unique(patentesST$Actividad)
+lista_actividad <- sort(lista_actividad)
+lista_actividad <- c("Todas", lista_actividad)
+
 # Lista ordenada de distritos + "Todos"
-lista_distritos <- unique(Patente_final$Distrito)
+lista_distritos <- unique(patentesST$Distrito)
 lista_distritos <- sort(lista_distritos)
 lista_distritos <- c("Todos", lista_distritos)
 ```
@@ -69,38 +84,48 @@ Column {.sidebar}
 -----------------------------------------------------------------------
 
 ```{r filtros}
-  selectInput(
-  inputId = "Distrito",
+selectInput(
+  inputId = "distrito",
   label = "Distrito",
   choices = lista_distritos,
   selected = "Todos"
 )
 
 selectInput(
-   inputId = "actividad",
-   label = "Actividad",
-   choices = lista_patentes,
-   selected = "Todas")
+  inputId = "actividad",
+  label = "Actividad",
+  choices = lista_actividad,
+  selected = "Todas"
+)
+
+dateRangeInput(
+  inputId = "fecha",
+  label = "Fecha",
+  start = "1981-01-01",
+  end   = Sys.Date(),
+  separator = " a ",
+  language = "es"
+)
 
   
 filtrarRegistros <- reactive({
   # Remoción de geometrías y selección de columnas
   patente_filtrada <-
-    Patente_final %>%
+    patentesST %>%
     dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona, Distrito)
   
   # Filtrado de actividad 
   if (input$actividad != "Todas") {
     patente_filtrada <-
-      Patente_final %>%
-      filter(Actividad == input$Actividad)
+      patentesST %>%
+      filter(Actividad == input$actividad)
   }
   
   # Filtrado de felidae por distrito
-  if (input$Distrito != "Todos") {
+  if (input$distrito != "Todos") {
     patente_filtrada <-
       patente_filtrada %>%
-      filter(Distrito == input$Distrito)
+      filter(Distrito == input$distrito)
   }
   
   # Filtrado de felidae por fecha
@@ -128,6 +153,7 @@ renderLeaflet({
     filtrarRegistros()
 
 uso_urbano_rWGS_rl <- raster::raster(uso_urbano_rWGS)
+
 # Mapa leaflet
 leaflet() %>%
   addTiles(options = providerTileOptions(noWrap = TRUE), group="Open Street Maps") %>%
@@ -148,29 +174,29 @@ leaflet() %>%
   )%>% 
   addCircleMarkers(
     data = registros,
-    stroke = F,
+    stroke = TRUE,
     radius = 4,
     fillColor = 'orange',
     fillOpacity = 1,
-    clusterOptions = markerClusterOptions(),
-    group = "Patentes comerciales",
     label = paste0(
-          registros$Actividad,
-          ",",
-          registros$Distrito,
-          ", ",
-          registros$Aprobacion
-        ),
-     popup = paste0(
-          "<strong>Distritos: </strong>",
-          "<em>",
-          registros$Distrito,
-          "</em>",
-          "<br>",
-          "<strong>Actividad Comercial: </strong>",
-          registros$Actividad,
-          )
-  )%>% 
+      registros$Actividad,
+      ",",
+      registros$Distrito,
+      ", ",
+      registros$Aprobacion
+    ),
+    popup = paste0(
+      "<strong>Distrito: </strong>",
+      registros$Distrito,
+      "<br>",
+      "<strong>Actividad Comercial: </strong>",
+      "<br>",
+      "<strong>Fecha: </strong>",
+      registros$Aprobacion,
+      "<br>",
+    )
+    
+  ) %>%  
   addMiniMap(
         tiles = providers$OpenStreetMap,
         toggleDisplay = TRUE
