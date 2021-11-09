@@ -1,10 +1,5 @@
 # carga de librerías
 
-library(shiny)
-library(shinydashboard)
-library(shinyWidgets)
-library(htmlwidgets)
-library(shiny)
 library(dplyr)
 library(sf)
 library(terra)
@@ -12,12 +7,10 @@ library(raster)
 library(rgdal)
 library(DT)
 library(plotly)
-library(leaflet)
-library(leaflet.extras)
-library(leafem)
 library(ggplot2)
-library(graphics)
-library(tidyverse)
+library(leaflet)
+library(shiny)
+library(shinydashboard)
 
 # Lectura de una capa vectorial (GeoJSON) de división distrial de Santa Ana
 limite_distrital <-
@@ -37,6 +30,11 @@ patentesST <-
     quiet = TRUE
   )
 
+# Transformación del CRS del objeto patentes
+patentesST <-
+  patentesST %>%
+  st_transform(4326)
+
 # Lectura de archivo CSV de patentes comerciales en Santa Ana
 Patente_final <-
   st_read(
@@ -47,6 +45,14 @@ Patente_final <-
     ),
     quiet = TRUE
   )
+
+# Lectura de capa raster de uso urbano
+uso_urbano_rWGS <-
+  rast(
+    "/vsicurl/https://dvictoria2020.github.io/Proyecto1-R/uso_urbano_rWGS.tif",
+  )
+
+
 # Asignación de un CRS al objeto patentes
 st_crs(Patente_final) <- 4326
 
@@ -61,6 +67,7 @@ lista_distritos <- sort(lista_distritos)
 lista_distritos <- c("Todos", lista_distritos)
 
 # Componentes de la aplicación Shiny
+# Definición del objeto ui
 ui <- 
   dashboardPage(
    dashboardHeader(title = "Actividad comercial en Santa Ana"),
@@ -105,15 +112,14 @@ ui <-
 
   fluidRow(
     box(
-      title = "Valoración de los recursos del patrimonio material",
-      plotlyOutput(outputId = "grafico"),
+      title = "Grafico",
+      plotOutput(outputId = "grafico"),
       width = 12
     )
   ))
   )
 server <- function(input, output, session) {
-  
- filtrarRegistros <- reactive({
+  filtrarRegistros <- reactive({
   # Remoción de geometrías y selección de columnas
   patente_filtrada <-
     patentesST %>%
@@ -124,7 +130,7 @@ server <- function(input, output, session) {
     patente_filtrada %>%
     filter(
       Aprobacion >= as.Date(input$fecha[1], origin = "1981-01-01") &
-      Aprobacion <= as.Date(input$fecha[2], origin = "1981-01-01")
+        Aprobacion <= as.Date(input$fecha[2], origin = "1981-01-01")
       )   
     
   # Filtrado de actividad 
@@ -153,7 +159,7 @@ output$tabla <- renderDT({
   registros %>%
     st_drop_geometry() %>%
   dplyr::select(Aprobacion, Nombre_comercio, Tipo_persona, Distrito) %>%
-  datatable(Patente_final, options = list(language = list(url = '//cdn.datatables.net/plug-ins/1.11.3/i18n/es_es.json'), pageLength = 8))
+  datatable(patentesST, options = list(language = list(url = '//cdn.datatables.net/plug-ins/1.11.3/i18n/es_es.json'), pageLength = 8))
   pageLenth =5
 })
 
@@ -178,7 +184,7 @@ output$mapa <- renderLeaflet({
     ) %>% 
     addCircleMarkers(
       data = registros,
-      stroke = F,
+      stroke = TRUE,
       radius = 4,
       fillColor = 'orange',
       fillOpacity = 1,
@@ -190,11 +196,11 @@ output$mapa <- renderLeaflet({
         "<strong>Actividad Comercial: </strong>",
         registros$Actividad),
       label = paste0(
-        "Actividad", registros$Actividad,
+        registros$Actividad,
         ",",
-        "Distrito", registros$Distrito,
+        registros$Distrito,
         ", ",
-        "Fecha aprobación",registros$Aprobacion
+        registros$Aprobacion
       )
     ) %>% 
       
@@ -202,43 +208,41 @@ output$mapa <- renderLeaflet({
         tiles = providers$OpenStreetMap,
         toggleDisplay = TRUE
       )%>%
-      addSearchOSM() %>%
-      addResetMapButton() %>%
-      addResetMapButton()%>%
-      addMouseCoordinates()
       addLayersControl(
         baseGroups = c("Open Street Maps","Imagen Satelital"),
         overlayGroups = c("Uso Urbano 2005","Limite distrital", "Patentes comerciales"), 
         options = layersControlOptions(collapsed = FALSE)
     )
   })
-  
 
+### Grafico2
+output$grafico <- renderPlot({
+  registros <- filtrarRegistros()
   
-  ### Estacionalidad
+  registros %>%
+    st_drop_geometry() %>%
+ggplot() + geom_col(
+  data= filtrarRegistros(),
+  aes(x= Distrito,
+      y= n, fill = Actividad), width = 0.7)+
   
-  
-  output$grafico <- renderPlot({
-    registros <- filtrarRegistros()
+  ggtitle( "Distribución de patentes comerciales por tipo de personería
+                          en los distritos de Santa Ana") +
+  xlab("Distrito") + 
+  ylab("Actividad") +
+  scale_fill_manual(values = c("#FFE4C4", "#8B7D6B")) +
+  theme (
+    legend.title = element_blank(),
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "plain")
     
-    # Convertimos a porcentaje
-    
-    porcentaje <- patentesST %>%
-      group_by(Distrito) %>%
-      count() %>%
-      ungroup() %>%
-      mutate(percentage = `n` / sum(`n`) * 100)
-    ggplot(porcentaje, aes(x = 1, y = percentage, fill = Distrito)) +
-      geom_bar(stat = "identity", colour = "black", size = 0.25) +
-      geom_text(aes(label = paste0(round(percentage, 1), "%")),
-                position = position_stack(vjust = 0.5)) +
-      coord_polar(theta = "y") +
-      labs(title = "Porcentaje de licencias comerciales y de licor según 
-                 distrito en el cantón Santa Ana") +
-      theme_void() + scale_fill_brewer(palette = "Dark2")
+  )
+
   })
   
 }
+
+# Llamado a la función shinyApp()
 
 shinyApp(ui, server)
 
