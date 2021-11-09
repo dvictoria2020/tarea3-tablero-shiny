@@ -36,11 +36,6 @@ patentesST <-
   st_read("https://dvictoria2020.github.io/tarea3-tablero-shiny/patentesST.geojson",
     quiet = TRUE
   )
-# Transformación del CRS del objeto patentes
-patentesST <-
-  patentesST %>%
-  st_transform(4326)
-
 
 # Lectura de archivo CSV de patentes comerciales en Santa Ana
 Patente_final <-
@@ -135,7 +130,7 @@ server <- function(input, output, session) {
   # Filtrado de actividad 
   if (input$Actividad != "Todas") {
     patente_filtrada <-
-    Patente_final %>%
+    patentesST %>%
       filter(Actividad == input$Actividad)
     }
     
@@ -187,6 +182,7 @@ output$mapa <- renderLeaflet({
       radius = 4,
       fillColor = 'orange',
       fillOpacity = 1,
+      group = "Patentes comerciales",
       popup = paste0(
         "<strong>Distrito: </strong>",
         registros$Distrito,
@@ -194,13 +190,12 @@ output$mapa <- renderLeaflet({
         "<strong>Actividad Comercial: </strong>",
         registros$Actividad),
       label = paste0(
-        registros$Actividad,
+        "Actividad", registros$Actividad,
         ",",
-        registros$Distrito,
+        "Distrito", registros$Distrito,
         ", ",
-        registros$Aprobacion
-      ),
-      
+        "Fecha aprobación",registros$Aprobacion
+      )
     ) %>% 
       
       addMiniMap(
