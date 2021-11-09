@@ -1,5 +1,8 @@
 # carga de librerías
 
+library(shiny)
+library(shinydashboard)
+library(shinyWidgets)
 library(dplyr)
 library(sf)
 library(terra)
@@ -7,10 +10,12 @@ library(raster)
 library(rgdal)
 library(DT)
 library(plotly)
-library(ggplot2)
 library(leaflet)
-library(shiny)
-library(shinydashboard)
+library(leaflet.extras)
+library(leafem)
+library(ggplot2)
+library(graphics)
+library(tidyverse)
 
 # Lectura de una capa vectorial (GeoJSON) de división distrial de Santa Ana
 limite_distrital <-
@@ -45,6 +50,8 @@ Patente_final <-
     ),
     quiet = TRUE
   )
+# Asignación de un CRS al objeto patentes
+st_crs(Patente_final) <- 4326
 
 # Lectura de capa raster de uso urbano
 uso_urbano_rWGS <-
@@ -52,9 +59,6 @@ uso_urbano_rWGS <-
     "/vsicurl/https://dvictoria2020.github.io/Proyecto1-R/uso_urbano_rWGS.tif",
   )
 
-
-# Asignación de un CRS al objeto patentes
-st_crs(Patente_final) <- 4326
 
 # Lista ordenada de actividad + "Todas"
 lista_actividad <- unique(patentesST$Actividad)
@@ -104,7 +108,7 @@ ui <-
       width = 6
     ),    
     box(
-      title = "Registros de patentes", 
+      title = "Registros de patentes comerciales", 
       DTOutput(outputId = "tabla"),
       width = 6
     )
@@ -124,27 +128,28 @@ server <- function(input, output, session) {
   patente_filtrada <-
     patentesST %>%
     dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona, Distrito)
-    
+  
   # Filtrado de actividad por fecha de aprobación
   patente_filtrada <-
     patente_filtrada %>%
     filter(
       Aprobacion >= as.Date(input$fecha[1], origin = "1981-01-01") &
         Aprobacion <= as.Date(input$fecha[2], origin = "1981-01-01")
-      )   
-    
-  # Filtrado de actividad 
+      )  
+  
+  # Filtrado de actividad
   if (input$Actividad != "Todas") {
     patente_filtrada <-
-    patentesST %>%
+      patentesST %>%
       filter(Actividad == input$Actividad)
-    }
-    
-    # Filtrado de actividad por distrito
-    if (input$Distrito != "Todos") {
-      patente_filtrada <-
+  }    
+   
+  
+  # Filtrado de actividad por distrito
+  if (input$Distrito != "Todos") {
+    patente_filtrada <-
       patente_filtrada %>%
-        filter(Distrito == input$Distrito)
+      filter(Distrito == input$Distrito)
     }
   
     return(patente_filtrada)
@@ -153,21 +158,22 @@ server <- function(input, output, session) {
 
 
 ### Registros de presencia
-output$tabla <- renderDT({
-  registros <- filtrarRegistros()
+  output$tabla <- renderDT({
+    registros <- filtrarRegistros()
+    
+    registros %>%
+      st_drop_geometry() %>%
+      dplyr::select(Aprobacion, Actividad, Nombre_comercio, Tipo_persona, Distrito) %>%
+      datatable(registros, options = list(language = list(url = '//cdn.datatables.net/plug-ins/1.11.3/i18n/es_es.json'), pageLength = 8))
+  })
   
-  registros %>%
-    st_drop_geometry() %>%
-  dplyr::select(Aprobacion, Nombre_comercio, Tipo_persona, Distrito) %>%
-  datatable(patentesST, options = list(language = list(url = '//cdn.datatables.net/plug-ins/1.11.3/i18n/es_es.json'), pageLength = 8))
-  pageLenth =5
-})
-
   ### Mapa de distribución
   
 output$mapa <- renderLeaflet({
   registros <-
     filtrarRegistros()
+  
+  uso_urbano_rWGS_rl <- raster::raster(uso_urbano_rWGS)
     
     
   # Mapa Leaflet con capas de provincias y registros de presencia de felinos
@@ -182,11 +188,17 @@ output$mapa <- renderLeaflet({
       weight = 2.0,
       group = "Limite distrital"
     ) %>% 
+    addRasterImage(
+      uso_urbano_rWGS_rl,
+      color= "#DDB892",
+      opacity = 0.6,
+      group = "Uso Urbano 2005"
+    )%>%
     addCircleMarkers(
       data = registros,
-      stroke = TRUE,
-      radius = 4,
-      fillColor = 'orange',
+      stroke = FALSE,
+      radius = 3,
+      fillColor = 'green',
       fillOpacity = 1,
       group = "Patentes comerciales",
       popup = paste0(
@@ -196,49 +208,50 @@ output$mapa <- renderLeaflet({
         "<strong>Actividad Comercial: </strong>",
         registros$Actividad),
       label = paste0(
-        registros$Actividad,
+        "Actividad: ", registros$Actividad,
         ",",
-        registros$Distrito,
+        "Distrito: ", registros$Distrito,
         ", ",
-        registros$Aprobacion
+        "Fecha de aprobación:", registros$Aprobacion
       )
     ) %>% 
-      
-      addMiniMap(
-        tiles = providers$OpenStreetMap,
-        toggleDisplay = TRUE
-      )%>%
-      addLayersControl(
-        baseGroups = c("Open Street Maps","Imagen Satelital"),
-        overlayGroups = c("Uso Urbano 2005","Limite distrital", "Patentes comerciales"), 
-        options = layersControlOptions(collapsed = FALSE)
+    addSearchOSM() %>%
+    addResetMapButton() %>%
+    addMouseCoordinates() %>%
+    addMiniMap(tiles = providers$OpenStreetMap,
+               toggleDisplay = TRUE) %>%
+    addLayersControl(
+      baseGroups = c("Open Street Maps", "Imagen Satelital"),
+      overlayGroups = c("Patentes comerciales","Uso Urbano 2005", "Limite distrital" ),
+      options = layersControlOptions(collapsed = FALSE
+      )
     )
   })
 
 ### Grafico2
 output$grafico <- renderPlot({
+  # Preparación de los datos  
   registros <- filtrarRegistros()
-  
+  Actividad <-
   registros %>%
-    st_drop_geometry() %>%
-ggplot() + geom_col(
-  data= filtrarRegistros(),
-  aes(x= Distrito,
-      y= n, fill = Actividad), width = 0.7)+
+  st_drop_geometry() %>%
+  select(Actividad) %>%
+  rename(Actividad = Actividad) %>%
+  group_by(Actividad) %>%
+  summarise(suma = n()) %>%
+  filter(suma > 0)
   
-  ggtitle( "Distribución de patentes comerciales por tipo de personería
-                          en los distritos de Santa Ana") +
-  xlab("Distrito") + 
-  ylab("Actividad") +
-  scale_fill_manual(values = c("#FFE4C4", "#8B7D6B")) +
-  theme (
-    legend.title = element_blank(),
-    legend.position = "right",
-    plot.title = element_text(size = 14, face = "plain")
-    
-  )
 
-  })
+  ggplot(Actividad, aes(x = reorder(Actividad, -suma),y = suma)) +
+    geom_col(colour = "#FF4040", fill = "#7FFFD4",width = 0.6) +
+    geom_text(aes(label = suma), vjust = 1, colour = "black") +
+    ggtitle("Actividades comerciales en Santa Ana") +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x = element_text(angle = 25,hjust = 1, vjust = 1)
+    ) +
+    xlab("Actividades") +
+    ylab("Cantidad")
+})
   
 }
 

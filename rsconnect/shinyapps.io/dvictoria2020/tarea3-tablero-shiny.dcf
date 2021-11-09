@@ -1,0 +1,14 @@
+name: tarea3-tablero-shiny
+title: tarea3-tablero-shiny
+username:
+account: dvictoria2020
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 5075209
+bundleId: 5229952
+url: https://dvictoria2020.shinyapps.io/tarea3-tablero-shiny/
+when: 1636433842.66566
+lastSyncTime: 1636433842.66566
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: .RData|index.Rmd|limite_distrital.geojson|Patente_final.csv|patentesST.geojson|patentesST_2.geojson
