@@ -90,14 +90,6 @@ ui <-
         choices = lista_distritos,
         selected = "Todos"
       ),
-      dateRangeInput(
-        inputId = "fecha",
-        label = "Fecha",
-        start = "1981-01-01",
-        end   = Sys.Date(),
-        separator = " a ",
-        language = "es"
-      ),
       startExpanded = TRUE
     )
   )),
@@ -129,13 +121,6 @@ server <- function(input, output, session) {
     patentesST %>%
     dplyr::select(Nombre_comercio, Aprobacion, Actividad, Tipo_persona, Distrito)
   
-  # Filtrado de actividad por fecha de aprobación
-  patente_filtrada <-
-    patente_filtrada %>%
-    filter(
-      Aprobacion >= as.Date(input$fecha[1], origin = "1981-01-01") &
-        Aprobacion <= as.Date(input$fecha[2], origin = "1981-01-01")
-      )  
   
   # Filtrado de actividad
   if (input$Actividad != "Todas") {
@@ -195,7 +180,7 @@ output$mapa <- renderLeaflet({
       group = "Uso Urbano 2005"
     )%>%
     addCircleMarkers(
-      data = registros,
+        data = registros,
       stroke = FALSE,
       radius = 3,
       fillColor = 'green',
