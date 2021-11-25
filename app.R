@@ -5,7 +5,6 @@ library(shinydashboard)
 library(shinyWidgets)
 library(dplyr)
 library(sf)
-library(terra)
 library(raster)
 library(rgdal)
 library(DT)
@@ -16,6 +15,10 @@ library(leafem)
 library(ggplot2)
 library(graphics)
 library(tidyverse)
+library(rmapshaper)
+library(spDataLarge)
+library(spData)
+library(utf8)
 
 # Lectura de una capa vectorial (GeoJSON) de división distrial de Santa Ana
 limite_distrital <-
@@ -40,6 +43,18 @@ patentesST <-
   patentesST %>%
   st_transform(4326)
 
+# Lectura de una capa vectorial (GeoJSON) red vial de Santa Ana
+red_vial <-
+  st_read("https://dvictoria2020.github.io/tarea3-tablero-shiny/red_vial.geojson",
+          quiet = TRUE
+  )
+
+# Transformación del CRS del objeto patentes
+red_vial <-
+  red_vial %>%
+  st_transform(4326)
+
+
 # Lectura de archivo CSV de patentes comerciales en Santa Ana
 Patente_final <-
   st_read(
@@ -52,13 +67,6 @@ Patente_final <-
   )
 # Asignación de un CRS al objeto patentes
 st_crs(Patente_final) <- 4326
-
-# Lectura de capa raster de uso urbano
-uso_urbano_rWGS <-
-  rast(
-    "/vsicurl/https://dvictoria2020.github.io/Proyecto1-R/uso_urbano_rWGS.tif",
-  )
-
 
 # Lista ordenada de actividad + "Todas"
 lista_actividad <- unique(patentesST$Actividad)
@@ -93,7 +101,8 @@ ui <-
       startExpanded = TRUE
     )
   )),
-  dashboardBody(fluidRow(
+  dashboardBody(
+    fluidRow(
     box(
       title = "Mapa distribución de patentes comerciales en Santa Ana",
       leafletOutput(outputId = "mapa"),
@@ -158,9 +167,7 @@ output$mapa <- renderLeaflet({
   registros <-
     filtrarRegistros()
   
-  uso_urbano_rWGS_rl <- raster::raster(uso_urbano_rWGS)
-    
-    
+
   # Mapa Leaflet con capas de provincias y registros de presencia de felinos
   leaflet() %>%
     addTiles(options = providerTileOptions(noWrap = TRUE), group = "Open Street Maps") %>%
@@ -173,12 +180,13 @@ output$mapa <- renderLeaflet({
       weight = 2.0,
       group = "Limite distrital"
     ) %>% 
-    addRasterImage(
-      uso_urbano_rWGS_rl,
-      color= "#DDB892",
-      opacity = 0.6,
-      group = "Uso Urbano 2005"
-    )%>%
+    addPolylines(
+      data = red_vial,
+      color = "black",
+      stroke = TRUE,
+      weight = 2.0,
+      group = "Red vial nacional"
+    ) %>%
     addCircleMarkers(
         data = registros,
       stroke = FALSE,
@@ -191,14 +199,8 @@ output$mapa <- renderLeaflet({
         registros$Distrito,
         "<br>",
         "<strong>Actividad Comercial: </strong>",
-        registros$Actividad),
-      label = paste0(
-        "Actividad: ", registros$Actividad,
-        ",",
-        "Distrito: ", registros$Distrito,
-        ", ",
-        "Fecha de aprobación:", registros$Aprobacion
-      )
+        registros$Actividad)
+   
     ) %>% 
     addSearchOSM() %>%
     addResetMapButton() %>%
@@ -207,7 +209,7 @@ output$mapa <- renderLeaflet({
                toggleDisplay = TRUE) %>%
     addLayersControl(
       baseGroups = c("Open Street Maps", "Imagen Satelital"),
-      overlayGroups = c("Patentes comerciales","Uso Urbano 2005", "Limite distrital" ),
+      overlayGroups = c("Patentes comerciales", "Limite distrital", "Red vial nacional" ),
       options = layersControlOptions(collapsed = FALSE
       )
     )
@@ -239,6 +241,25 @@ output$grafico <- renderPlot({
 })
   
 }
+
+
+# Pestaña 2
+
+
+# Provincias de Costa Rica y sus centroides calculados con st_centroid() y st_point_on_surface()
+plot(
+  limite_distrital$geometry,
+  main = "Centroides de provincias: st_centroid (rojo) y st_point_on_surface (verde)",
+  axes = TRUE,
+  graticule = TRUE)
+
+plot(st_centroid(limite_distrital),
+     add = TRUE,
+     pch = 16,
+     col = "red")
+
+
+
 
 # Llamado a la función shinyApp()
 
